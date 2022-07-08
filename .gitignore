@@ -1,4 +1,6 @@
 # Environment
+text-mae-venv/
 mae-venv/
 __pycache__/
 .vscode/
+output_dir/

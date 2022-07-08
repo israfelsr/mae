@@ -238,15 +238,17 @@ def main(args):
         drop_last=True,
     )
 
-    for t, (batch) in enumerate(data_loader_train):
-        print(batch["image"].shape)
-        break
-    '''
-
     # define the model
     model = models_mae.__dict__[args.model](norm_pix_loss=args.norm_pix_loss)
 
     model.to(device)
+
+    for t, (batch) in enumerate(data_loader_train):
+        print(batch["image"].shape)
+        output = model(batch["image"])
+        print(output.shape)
+        break
+    '''
 
     model_without_ddp = model
     print("Model = %s" % str(model_without_ddp))
