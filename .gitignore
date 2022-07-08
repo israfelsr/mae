@@ -1,0 +1,4 @@
+# Environment
+mae-venv/
+__pycache__/
+.vscode/

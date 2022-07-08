@@ -16,6 +16,8 @@ from torchvision import datasets, transforms
 from timm.data import create_transform
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
+from datasets import load_dataset
+
 
 def build_dataset(is_train, args):
     transform = build_transform(is_train, args)
@@ -26,6 +28,30 @@ def build_dataset(is_train, args):
     print(dataset)
 
     return dataset
+
+
+def build_hf_dataset(data_path: str,
+                     split: str = 'train',
+                     streaming: bool = True,
+                     transform=None,
+                     is_train=None,
+                     args=None):
+    dataset = load_dataset(data_path, split=split, streaming=streaming)
+    dataset = dataset.with_format("torch")
+    if transforms is None:
+        transform = build_transform(is_train, args)
+    transform = set_transforms(transform)
+    transformed_dataset = dataset.map(transform)
+    return transformed_dataset
+
+
+def set_transforms(transforms):
+
+    def apply_transforms(sample):
+        sample['image'] = transforms(sample['image'])
+        return sample
+
+    return apply_transforms
 
 
 def build_transform(is_train, args):
@@ -56,7 +82,8 @@ def build_transform(is_train, args):
         crop_pct = 1.0
     size = int(args.input_size / crop_pct)
     t.append(
-        transforms.Resize(size, interpolation=PIL.Image.BICUBIC),  # to maintain same ratio w.r.t. 224 images
+        transforms.Resize(size, interpolation=PIL.Image.BICUBIC
+                          ),  # to maintain same ratio w.r.t. 224 images
     )
     t.append(transforms.CenterCrop(args.input_size))
 
