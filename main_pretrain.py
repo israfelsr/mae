@@ -15,6 +15,7 @@ import numpy as np
 import os
 import time
 from pathlib import Path
+from tqdm import trange
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -194,9 +195,11 @@ def main(args):
     # simple augmentation
     # TODO: do we want to do flips??
     transform_train = transforms.Compose([
-        transforms.RandomResizedCrop(args.input_size,
-                                     scale=(0.2, 1.0),
-                                     interpolation=3),  # 3 is bicubic
+        transforms.RandomResizedCrop(
+            args.input_size,
+            scale=(0.2, 1.0),
+            interpolation=transforms.InterpolationMode.BICUBIC
+        ),  # 3 is bicubic
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
@@ -243,26 +246,21 @@ def main(args):
 
     model.to(device)
 
-    for t, (batch) in enumerate(data_loader_train):
-        print(batch["image"].shape)
-        output = model(batch["image"])
-        print(output.shape)
-        break
-    '''
+    model_without_ddp = model  # without distributed data parallel
+    #LOG.info("Model = %s" % str(model_without_ddp))
 
-    model_without_ddp = model
-    print("Model = %s" % str(model_without_ddp))
-
+    # TODO: check if accum_iter change with gradient accumulation
     eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
 
     if args.lr is None:  # only base_lr is specified
         args.lr = args.blr * eff_batch_size / 256
 
-    print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
-    print("actual lr: %.2e" % args.lr)
+    LOG.info("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
+    LOG.info("actual lr: %.2e" % args.lr)
 
-    print("accumulate grad iterations: %d" % args.accum_iter)
-    print("effective batch size: %d" % eff_batch_size)
+    # TODO: understand how this works
+    LOG.info("accumulate grad iterations: %d" % args.accum_iter)
+    LOG.info("effective batch size: %d" % eff_batch_size)
 
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(
@@ -273,17 +271,17 @@ def main(args):
     param_groups = optim_factory.add_weight_decay(model_without_ddp,
                                                   args.weight_decay)
     optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
-    print(optimizer)
-    loss_scaler = NativeScaler()
+    LOG.info(optimizer)
 
+    loss_scaler = NativeScaler()
     misc.load_model(args=args,
                     model_without_ddp=model_without_ddp,
                     optimizer=optimizer,
                     loss_scaler=loss_scaler)
 
-    print(f"Start training for {args.epochs} epochs")
+    LOG.info(f"Start training for {args.epochs} epochs")
     start_time = time.time()
-    for epoch in range(args.start_epoch, args.epochs):
+    for epoch in trange(args.start_epoch, args.epochs):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
         train_stats = train_one_epoch(model,
@@ -294,6 +292,7 @@ def main(args):
                                       loss_scaler,
                                       log_writer=log_writer,
                                       args=args)
+
         if args.output_dir and (epoch % 20 == 0 or epoch + 1 == args.epochs):
             misc.save_model(args=args,
                             model=model,
@@ -307,7 +306,7 @@ def main(args):
                for k, v in train_stats.items()},
             'epoch': epoch,
         }
-
+        print(log_stats)
         if args.output_dir and misc.is_main_process():
             if log_writer is not None:
                 log_writer.flush()
@@ -319,7 +318,6 @@ def main(args):
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
-'''
 
 
 if __name__ == '__main__':
